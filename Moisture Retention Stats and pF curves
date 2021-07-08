@@ -2,7 +2,7 @@ Here is some code designed to take raw soil moisture data from intact soil core 
 The first component of the code anlayzes the raw data and performs and ANOVA test, as well as LSD and HSD post-hoc tests 
 to identify any significant differences between treatments.
 
-setwd("C:/Users/sklenka.4/OneDrive - The Ohio State University/Documents/Research Sites/Waterman/Compost Plot/Baseline Data 2019")
+setwd("YOUR_DIRECTORY_HERE)
 
 #Necessary packages
 {
@@ -30,3 +30,337 @@ setwd("C:/Users/sklenka.4/OneDrive - The Ohio State University/Documents/Researc
   conflict_prefer("ad.test", "nortest")
   conflict_prefer("cvm.test", "nortest")
 }
+
+RawData <- read.table(file = "./comp.BL.new.txt", header = TRUE)
+RawData
+
+
+#Moist Stats
+{
+  
+  Moist_stats_gen <- function(d){
+    
+    
+    
+    
+    
+    moist.stat <- function(d, de, k){
+      
+      Data <- d %>%
+        select(Plot:cylinder | starts_with("VWC")) 
+      colnames(Data)
+      colnames(Data)[6:18] <- c(0, 1, 2, 3, 4, 5, 6, 10, 30, 100, 300, 500, 1500)
+      Data <- Data %>%
+        rename(Treatment = treatment_mg_ha) %>%
+        gather(kpa, theta, "0":"1500") %>%
+        mutate(depth = case_when(depth == "a" ~ "0-10 cm",
+                                 depth == "b" ~ "10-20 cm")) %>%
+        filter(depth == de,
+               kpa == k) %>%
+        rename(y = theta)
+      
+      
+      Data$Treatment <- as.factor(Data$Treatment)
+      
+      n <- max(Data$Rep)
+      
+      ANOVA <- aov(y ~ Treatment + Rep, Data)
+      summary(ANOVA)
+      pval <- summary(ANOVA)[[1]][1,5]
+      pval
+      
+      sig.func <- function(pval){
+        if (pval > 0.01 & pval < 0.05) {
+          print("*")
+        } else if (pval > 0.001 & pval < 0.01) {
+          print("**")
+        } else if (pval < 0.001) {
+          print("***")
+        } else if (pval > 0.05) {
+          print("NS")
+        }
+      }
+      
+      LSD <- LSD.test(ANOVA, trt = "Treatment", group = TRUE)
+      lsd.val <- LSD$statistics$LSD
+      lsd.groups <- LSD$groups
+      rows <- row.names(lsd.groups)
+      lsd.groups <- lsd.groups %>% 
+        add_column(treatment = rows) %>%
+        rename(lsd.groups = groups)
+      lsd.groups <- full_join(lsd.groups, LSD$means, by = "y")
+      lsd.groups <- lsd.groups %>%
+        select(y, lsd.groups, treatment, Max, Min)
+      
+      
+      HSD <- HSD.test(ANOVA, trt = "Treatment", group = TRUE)
+      hsd.val <- HSD$statistics$MSD
+      hsd.groups <- HSD$groups
+      rows <- row.names(hsd.groups)
+      hsd.groups <- hsd.groups %>%
+        add_column(treatment = rows) %>%
+        rename(hsd.groups = groups)
+      
+      groups <- inner_join(lsd.groups, hsd.groups)
+      
+      Data <- Data %>%
+        group_by(Treatment) %>%
+        summarise(mean = mean(y),
+                  se = sd(y)/sqrt(n)) %>%
+        mutate(sig = case_when(Treatment == "0"  ~ sig.func(pval))) %>%
+        mutate(HSD = case_when(Treatment == "0" ~ hsd.val),
+               LSD = case_when(Treatment == "0" ~ lsd.val),
+               p = case_when(Treatment == "0" ~ pval)) %>%
+        add_column(kpa = k,
+                   parameter = "theta",
+                   depth = de) %>%
+        rename(treatment = Treatment)
+      
+      Data <- merge(Data, groups, by="treatment")
+      Data <- Data %>%
+        select(-y) %>%
+        select(treatment, parameter, depth, kpa, mean, se, Max, Min, LSD, lsd.groups, HSD, hsd.groups, p, sig)
+      
+      return(Data)
+      
+    }  
+    
+    moist.stat(RawData, "0-10 cm", 0)
+    
+    moist.stat2 <- function(k){
+      bind_rows(
+        moist.stat(RawData, "0-10 cm", k),
+        moist.stat(RawData, "10-20 cm", k)
+      )
+    }
+    
+    vars <- c(0, 1, 2, 3, 4, 5, 6, 10, 30, 100, 300, 500, 1500)
+    
+    moist_stats <- lapply(vars , moist.stat2)
+    all_moist_stats <- do.call(rbind, moist_stats)
+    
+    return(all_moist_stats)
+}  
+  
+  ALL_MOIST <- Moist_stats_gen(RawData)
+  write.csv(ALL_MOIST, "./All_MOIST.csv")
+  
+}  
+
+
+#Stats Generation
+{
+    
+    #Function Inputs (D = Data frame, d = depth, v = variable)
+    Stats.gen <- function(D, d, v){
+      
+      
+      
+      Data <- D %>%
+        filter(depth == d) %>%
+        rename(y = v,
+               Treatment = treatment_mg_ha) %>%
+        mutate(depth = case_when(depth == "a" ~ "0-10 cm",
+                                 depth == "b" ~ "10-20 cm"))
+      
+      Data$Treatment <- as.factor(Data$Treatment)
+
+      n <- max(Data$Rep)
+      
+      ANOVA <- aov(y ~ Treatment + Rep, data = Data)
+      summary(ANOVA)
+      pval <- summary(ANOVA)[[1]][1,5]
+      pval
+      
+      
+      
+      sig.func <- function(pval){
+        if (pval > 0.01 & pval < 0.05) {
+          print("*")
+        } else if (pval > 0.001 & pval < 0.01) {
+          print("**")
+        } else if (pval < 0.001) {
+          print("***")
+        } else if (pval > 0.05) {
+          print("NS")
+        }
+      }
+      
+      
+      LSD <- LSD.test(ANOVA, trt = "Treatment", group = TRUE)
+      lsd.val <- LSD$statistics$LSD
+      lsd.groups <- LSD$groups
+      rows <- row.names(lsd.groups)
+      lsd.groups <- lsd.groups %>% 
+        add_column(treatment = rows) %>%
+        rename(lsd.groups = groups)
+      lsd.groups <- full_join(lsd.groups, LSD$means, by = "y")
+      lsd.groups <- lsd.groups %>%
+        select(y, lsd.groups, treatment, Max, Min)
+      
+      
+      
+      HSD <- HSD.test(ANOVA, trt = "Treatment", group = TRUE)
+      hsd.val <- HSD$statistics$MSD
+      hsd.groups <- HSD$groups
+      rows <- row.names(hsd.groups)
+      hsd.groups <- hsd.groups %>% 
+        add_column(treatment = rows) %>%
+        rename(hsd.groups = groups)
+      
+      
+      groups <- inner_join(lsd.groups, hsd.groups)
+      
+      
+      Data <- Data %>%
+        group_by(Treatment) %>%
+        summarise(mean = mean(y),
+                  se = sd(y)/sqrt(n)) %>%
+        mutate(sig = case_when(Treatment == "0" ~ sig.func(pval))) %>%
+        mutate(HSD = case_when(Treatment == "0" ~ hsd.val),
+               LSD = lsd.val,
+               p = case_when(Treatment == "0" ~ pval)) %>%
+        add_column(variable = v,
+                   depth = d) %>%
+        rename(treatment = Treatment)
+      
+      Data <- merge(Data, groups, by="treatment")
+      Data <- Data %>% 
+        select(treatment, variable, depth, mean, se, Max, Min, lsd.groups, LSD, hsd.groups, HSD, p, sig)
+      
+      
+      return(Data)
+}
+   
+    
+    
+    Stats.aggregate <- function(x) {
+      bind_rows(
+        
+        if (x %in% colnames(RawData)) {
+          bind_rows(
+            Stats.gen(RawData, "a", x),
+            Stats.gen(RawData, "b", x)
+          )
+        }
+      )
+}
+    
+    vars <- c("POC", "MOC", "DOC", "TOC", "bulk_density", "FC", "TC_carb_corr", "Cstock", "pH", "EC")
+    
+    
+    run_all_stats <- lapply(vars , Stats.aggregate)
+    
+    all_stats <- do.call(rbind, run_all_stats)
+
+    
+    write.csv(all_stats, "./All_Stats.csv")
+    
+}
+
+
+
+#PF moisture curve
+
+
+
+#0-10cm
+{
+  
+  dir.create("./Plots")
+  
+  Data <- RawData %>%
+    select(Plot:cylinder | starts_with("VWC")) 
+  colnames(Data)
+  colnames(Data)[6:18] <- c(0, 1, 2, 3, 4, 5, 6, 10, 30, 100, 300, 500, 1500)
+  Data <- Data %>%
+    rename(Treatment = treatment_mg_ha) %>%
+    gather(kpa, theta, "0":"1500") %>%
+    mutate(depth = case_when(depth == "a" ~ "0-10 cm",
+                             depth == "b" ~ "10-20 cm")) %>%
+    group_by(.,depth, Treatment, kpa) %>%
+    summarise(mean = mean(theta), se=sd(theta)/sqrt(3)) 
+
+  str(Data)
+  Data$Treatment <- as.factor(Data$Treatment)
+  Data$kpa <- as.numeric(Data$kpa)
+  
+  labeldf <- ALL_MOIST %>%
+    filter(depth == "0-10 cm") %>%
+    select(treatment, kpa, sig) %>%
+    rename(Treatment = treatment) %>%
+    drop_na(sig)
+  
+  
+  plot <- ggplot(Data %>% filter(depth == "0-10 cm"), aes(x = kpa, y = mean, fill=Treatment)) +
+    geom_errorbar(aes(ymin = mean - se, ymax = mean + se, color = Treatment), size = 0.3) +
+    geom_line(aes(x = kpa, y = mean, group = Treatment, color = Treatment)) +
+    scale_x_log10(breaks = c(0, 1, 2, 3, 4, 5, 6, 10, 30, 100, 500, 1500)) +
+    #geom_text(data = labeldf, aes(x = kpa, y = 0.7, label = sig)) +
+    geom_point(show.legend = FALSE)+
+    geom_line(aes(color = Treatment, group=factor(Treatment)),size=1)+
+    labs(title = ~ atop(paste(''),
+                        paste('Volumetric Water Content with Variable Mulch 0-10cm')))+
+    theme(plot.title = element_text(color="#666666", face="bold", size=15, hjust=0)) +
+    theme(axis.title = element_text(color="#666666", size=14)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    theme(axis.text = element_text(size=12))+
+    #facet_wrap(~Depth, scales = "free", nrow = 2) +
+    theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 10)))+
+    theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 10, l = 0)))+
+    labs(x ="Tension (-kPa)", y = expression(paste("Volumetric Water Content ", (theta), "(", cm^{3}, cm^{-3}, ")")), color = "Treatments") +
+    theme(plot.margin = unit(c(0.1, 0, 0.1, 0.1), "cm")) 
+  
+  
+  plot
+  ggsave("./Plots/pf curve Compost Baseline 0-10cm.png")
+  
+}
+
+
+#10-20cm
+{
+  
+  Data <- RawData %>%
+    select(Plot:cylinder | starts_with("VWC")) 
+  colnames(Data)
+  colnames(Data)[6:18] <- c(0, 1, 2, 3, 4, 5, 6, 10, 30, 100, 300, 500, 1500)
+  Data <- Data %>%
+    rename(Treatment = treatment_mg_ha) %>%
+    gather(kpa, theta, "0":"1500") %>%
+    mutate(depth = case_when(depth == "a" ~ "0-10 cm",
+                             depth == "b" ~ "10-20 cm")) %>%
+    group_by(.,depth, Treatment, kpa) %>%
+    summarise(mean = mean(theta), se=sd(theta)/sqrt(3)) 
+  
+  str(Data)
+  Data$Treatment <- as.factor(Data$Treatment)
+  Data$kpa <- as.numeric(Data$kpa)
+  
+  Data
+  
+  
+  plot <- ggplot(Data %>% filter(depth == "10-20 cm"), aes(x = kpa, y = mean, fill=Treatment)) +
+    geom_errorbar(aes(ymin = mean - se, ymax = mean + se, color = Treatment), size = 0.3) +
+    geom_line(aes(x = kpa, y = mean, group = Treatment, color = Treatment)) +
+    scale_x_log10(breaks = c(0, 1, 2, 3, 4, 5, 6, 10, 30, 100, 500, 1500)) +
+    geom_point(show.legend = FALSE)+
+    geom_line(aes(color = Treatment, group=factor(Treatment)),size=1)+
+    labs(title = ~ atop(paste(''),
+                        paste('Volumetric Water Content with Variable Mulch 10-20 cm')))+
+    theme(plot.title = element_text(color="#666666", face="bold", size=15, hjust=0)) +
+    theme(axis.title = element_text(color="#666666", size=14)) +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    theme(axis.text = element_text(size=12))+
+    #facet_wrap(~Depth, scales = "free", nrow = 2) +
+    theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 10)))+
+    theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 10, l = 0)))+
+    labs(x ="Tension (-kPa)", y = expression(paste("Volumetric Water Content ", (theta), "(", cm^{3}, cm^{-3}, ")")), color = "Treatments") +
+    theme(plot.margin = unit(c(0.1, 0, 0.1, 0.1), "cm")) 
+  
+  
+  plot
+  ggsave("./Plots/pf curve Compost Baseline 10-20cm.png")
+  
+}
+
