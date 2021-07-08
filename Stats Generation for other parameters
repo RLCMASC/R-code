@@ -1,6 +1,11 @@
-setwd("YOUR_DIRECTORY_HERE")
 
-#Necessary packages
+
+
+setwd("YOUR_DIRECTORY_HERE")
+#Here you will enter the path of the folder you wish to use as your directory. This is where objects you create will be saved to. 
+Example: setwd("C:/Users/JohnDoe/Desktop/Project") (Make sure you put in "")
+
+#Necessary packages. use install.packages("package_name") to install before using library() to load the package. 
 {
   library("broom")
   library("agricolae")
@@ -19,30 +24,29 @@ setwd("YOUR_DIRECTORY_HERE")
   library("goftest")
   library("nortest")
   
-  
-  
+  #some packages use functions that have the same name. Here we are telling R which package to reference when we use those functions.
   conflict_prefer('filter', "dplyr")
   conflict_prefer("select", "dplyr") 
   conflict_prefer("skewness", "moments")
   conflict_prefer("rename", "dplyr")
   conflict_prefer("ad.test", "nortest")
-  conflict_prefer("cvm.test", "nortest")
-  
-  
+  conflict_prefer("cvm.test", "nortest") 
 }
+
+
+#Load in your data and give it a name. Here we create an object named 'RawData', and tell R where to look for the .txt file we want to use. 
+#Tip: You can use ./ instead of typing the full path everytime and it will default to your working directory.
 
 RawData <- read.table(file = "./comp.BL.new.txt", header = TRUE)
 RawData
 
 
-
 #Stats Generation
 {
-    
+    #Now we create our own custom function to take our RawData, manipulate it and extract statistical information.
     #Function Inputs (D = Data frame, d = depth, v = variable)
+    
     Stats.gen <- function(D, d, v){
-      
-      
       
       Data <- D %>%
         filter(depth == d) %>%
@@ -59,9 +63,7 @@ RawData
       summary(ANOVA)
       pval <- summary(ANOVA)[[1]][1,5]
       pval
-      
-      
-      
+     
       sig.func <- function(pval){
         if (pval > 0.01 & pval < 0.05) {
           print("*")
@@ -73,8 +75,7 @@ RawData
           print("NS")
         }
       }
-      
-      
+         
       LSD <- LSD.test(ANOVA, trt = "Treatment", group = TRUE)
       lsd.val <- LSD$statistics$LSD
       lsd.groups <- LSD$groups
@@ -121,7 +122,8 @@ RawData
 }
    
     
-    
+   #Now we create another function with two instances of the function we created previously to run stats for both soil depths.
+   
     Stats.aggregate <- function(x) {
       bind_rows(
         
