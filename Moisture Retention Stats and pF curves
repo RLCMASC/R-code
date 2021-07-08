@@ -1,3 +1,32 @@
-#Here is some code designed to take raw soil moisture data from intact soil core experiments utilizing the tension table apparatus and pressure chamber. 
-#The first component of the code anlayzes the raw data and performs and ANOVA test, as well as LSD and HSD post-hoc tests to identify any significant differences between treatments.
+Here is some code designed to take raw soil moisture data from intact soil core experiments utilizing the tension table apparatus and pressure chamber. 
+The first component of the code anlayzes the raw data and performs and ANOVA test, as well as LSD and HSD post-hoc tests 
+to identify any significant differences between treatments.
 
+setwd("C:/Users/sklenka.4/OneDrive - The Ohio State University/Documents/Research Sites/Waterman/Compost Plot/Baseline Data 2019")
+
+#Necessary packages
+{
+  library("broom")
+  library("agricolae")
+  library("ggplot2")
+  library("magrittr")
+  library("tidyr")
+  library("dplyr")
+  library("foreign")
+  library("multcomp")
+  library("multcompView")
+  library("conflicted")
+  library("tidyverse")
+  library("ggpubr")
+  library("rstatix")
+  library("moments")
+  library("goftest")
+  library("nortest")
+  
+  conflict_prefer('filter', "dplyr")
+  conflict_prefer("select", "dplyr") 
+  conflict_prefer("skewness", "moments")
+  conflict_prefer("rename", "dplyr")
+  conflict_prefer("ad.test", "nortest")
+  conflict_prefer("cvm.test", "nortest")
+}
