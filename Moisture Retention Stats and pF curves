@@ -1,0 +1,3 @@
+#Here is some code designed to take raw soil moisture data from intact soil core experiments utilizing the tension table apparatus and pressure chamber. 
+#The first component of the code anlayzes the raw data and performs and ANOVA test, as well as LSD and HSD post-hoc tests to identify any significant differences between treatments.
+
