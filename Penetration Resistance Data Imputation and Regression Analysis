@@ -1,0 +1,158 @@
+setwd("")
+
+#required libraries
+{
+library(tidyverse)
+library(mice)
+library(FNN)
+library(VIM)
+library(lattice)
+library(mgcv)
+library(ggpubr)
+library(stringi)
+}
+
+
+#Penetration Resistance Correction for digital penetrometer
+
+#This code is intended to correct digital penetrometer data for 'spikiness' and fill gaps by imputation using the R package mice. 
+#The imputed values are fit using a loess curve and predictions along the curve are extracted as corrected PR values.
+#The raw PR data is plotted in Red, the imputed values in Grey, and the corrected values in Green.
+#A file named PR_Corrected is created containing the predicted values of the curve, and another, PR_means, is created for overall mean PR values per sample. 
+
+
+
+Data <- read.table("./Katy_Srabani_PR.txt", header = TRUE) 
+Data <- Data %>%
+  select(-MaxDepth, -Interval)
+Data <- Data[rowSums(Data == 0) < 23, ]    #removes rows that contain 0 in more than 23 of the 32 readings per sample, otherwise mice will produce error. 
+
+
+total.depth <- 32   #Define the total depth in cm.
+min.cutoff <- 900   #Define the lowest value you want to prune from your data to minimize the effect of lower spikes. 
+span <- c(0.35)   #Define the tightness of the fit of the loess curve. Lower = tighter fit.
+
+
+Imputation_Function <- function(sample){
+
+  Data <- Data %>%
+    gather(depth, PR, "X1":"X32") %>%
+    summarise(Group, Insert, depth, PR)
+  Data$depth <- as.factor(Data$depth)
+  Data$Insert <- as.factor(Data$Insert)
+  Data$PR <- as.numeric(Data$PR)
+  levels(Data$depth) <- c(1:32) 
+  Data$depth <- as.numeric(Data$depth)
+  
+  sample <- sample
+
+  d <- Data%>%filter(Group == sample)
+  d$Insert <- as.factor(d$Insert)
+  
+  Insertlevels <- c(unique(d$Insert))
+  
+  Data$PR <- replace(Data$PR, Data$PR==0, NA)
+  Data$PR <- replace(Data$PR, Data$PR < min.cutoff, NA)
+  
+  
+  
+  Insert <- function(insert){
+  
+  Data <- Data %>%
+    filter(Insert == insert,
+           Group == sample) %>%
+    rename(sample = Group)
+  
+  
+  mice <- mice(Data, m=10, method = "pmm", maxit=30)
+  imp <- mice$imp$PR
+
+  mice$imp$PR <- imp %>%  
+    mutate(mean = rowMeans(imp[,c(1:10)])) %>%
+    select(-c(1:10)) %>%
+    rename("1" = mean)
+    
+  
+  mice <- complete(mice, 1)  
+  
+  mice <- mice %>%
+    select(-sample) %>%
+    rename(PRimpute = PR)
+  
+  model <- loess(PRimpute ~ depth, data=mice, span = span)
+  summary(model)
+  xrange <- range(mice$depth)
+  xseq <- seq(from=xrange[1], to=xrange[2], length=total.depth)
+  pred <- predict(model, newdata = data.frame(depth = xseq), se=TRUE)
+  y = pred$fit
+  ci <- pred$se.fit * qt(0.95 / 2 + .5, pred$df)
+  ymin = y - ci
+  ymax = y + ci
+  MiceClean <- data.frame(x = xseq, y, ymin, ymax, se = pred$se.fit)
+  MiceClean <- MiceClean %>%
+    rename(depth = x,
+           PRCorrected = y) %>%
+  add_column(Insert = insert)
+
+    
+    mymerge <- function(x, y){
+      merge(x, y, by=c("depth", "Insert"), all=TRUE)
+    }
+    
+  new <- Reduce(mymerge, list(MiceClean, Data, mice))
+  new <- new %>%
+    mutate(PRimpute = case_when(is.na(PR) ~ PRimpute)) %>%
+    gather(Parameter, PR, PRCorrected, PR, PRimpute) %>%
+    add_column(sample = sample)
+  
+  dir.create("./PR Plots")
+  path <- "./PR Plots/  .png" 
+  stri_sub(path, 12, 13) <- paste("Sample", sample, "_ Insert", insert)
+  
+  plot <- ggplot(new, aes(x=depth, y=PR, color = Parameter)) + geom_point(position = "identity") +
+    geom_line(new %>% filter(Parameter == "PR"), mapping = aes(x = depth, y = PR)) +
+    geom_point(new %>% filter(Parameter == "PR"), mapping = aes(depth, PR), colour="red", size = 1.6) +
+    geom_point(new %>% filter(Parameter == "PRimpute"), mapping = aes(depth, PR), shape = 21, fill = "lightgray",
+               color = "black", size = 3) +
+    stat_smooth(new %>% filter(Parameter == "PRCorrected"), mapping = aes(depth, PR), method = "loess", formula = y ~ x, size = 1.3, se = FALSE, color = "green", span = 0.2) +
+    geom_point(new %>% filter(Parameter == "PRCorrected"), mapping = aes(depth, PR), colour="black") +
+    scale_colour_manual(name="legend", values=c("red", "green", "grey")) +
+    theme_minimal() +
+    labs(x = "Depth (cm)", y = "Penetration Resistance (kpa)") +
+    theme(axis.title.x = element_text(margin = unit(c(0.5, 0, 0, 0), "cm")), 
+          axis.title.y = element_text(margin = unit(c(0, 3, 0, 0), "mm")),
+          plot.margin = unit(c(1, 1, 1, 1), "cm")) +
+    theme(legend.position="top", legend.title = element_blank()) 
+    plot
+    
+  ggsave(path)
+  
+  print(plot)
+
+  return(new)  
+}
+  new <- bind_rows(lapply(Insertlevels, Insert))
+  new <- new %>%
+    select(-sample.1)
+  
+  return(new)
+}
+
+
+x <- unique(Data$Group)[unique(Data$Group) %in% c(132:189)]
+
+All_corrected <- bind_rows(lapply(x, Imputation_Function))
+
+PR_Corrected <- All_corrected %>%
+  filter(Parameter == "PRCorrected")
+
+write.csv(PR_Corrected, "./PR_Corrected.csv")
+
+means <- All_corrected %>%
+  filter(Parameter == 'PRCorrected') %>%
+  group_by(sample, Parameter, Insert) %>%
+  summarise(mean = mean(PR))
+
+write.csv(means, "./PR_means.csv")
+
+
